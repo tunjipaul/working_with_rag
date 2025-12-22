@@ -1,0 +1,390 @@
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+import os
+import time
+import asyncio
+from datetime import datetime, timedelta
+from collections import defaultdict
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_classic.chains import create_retrieval_chain
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.documents import Document
+import uuid
+
+app = FastAPI()
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Storage
+vector_stores = {}
+rag_chains = {}
+
+# Rate limiting tracking
+class RateLimiter:
+    def __init__(self):
+        self.requests = defaultdict(list)  # api_key -> [timestamp, timestamp, ...]
+        self.daily_requests = defaultdict(int)  # api_key -> count
+        self.last_reset = defaultdict(lambda: datetime.now())  # api_key -> last_reset_time
+        
+        # Free tier limits
+        self.RPM_LIMIT = 10  # Requests per minute
+        self.RPD_LIMIT = 250  # Requests per day
+        
+    def reset_daily_if_needed(self, api_key: str):
+        """Reset daily counter if 24 hours have passed."""
+        now = datetime.now()
+        if now - self.last_reset[api_key] > timedelta(days=1):
+            self.daily_requests[api_key] = 0
+            self.last_reset[api_key] = now
+    
+    def check_rate_limit(self, api_key: str) -> dict:
+        """Check if request is within rate limits."""
+        now = time.time()
+        
+        # Reset daily counter if needed
+        self.reset_daily_if_needed(api_key)
+        
+        # Remove requests older than 1 minute
+        self.requests[api_key] = [
+            req_time for req_time in self.requests[api_key]
+            if now - req_time < 60
+        ]
+        
+        # Check RPM limit
+        rpm_count = len(self.requests[api_key])
+        if rpm_count >= self.RPM_LIMIT:
+            wait_time = 60 - (now - self.requests[api_key][0])
+            return {
+                "allowed": False,
+                "reason": "RPM limit exceeded",
+                "wait_time": round(wait_time, 2),
+                "rpm_used": rpm_count,
+                "rpm_limit": self.RPM_LIMIT,
+                "rpd_used": self.daily_requests[api_key],
+                "rpd_limit": self.RPD_LIMIT
+            }
+        
+        # Check RPD limit
+        if self.daily_requests[api_key] >= self.RPD_LIMIT:
+            return {
+                "allowed": False,
+                "reason": "Daily limit exceeded",
+                "wait_time": None,
+                "rpm_used": rpm_count,
+                "rpm_limit": self.RPM_LIMIT,
+                "rpd_used": self.daily_requests[api_key],
+                "rpd_limit": self.RPD_LIMIT
+            }
+        
+        # Allow request
+        self.requests[api_key].append(now)
+        self.daily_requests[api_key] += 1
+        
+        return {
+            "allowed": True,
+            "rpm_used": rpm_count + 1,
+            "rpm_limit": self.RPM_LIMIT,
+            "rpd_used": self.daily_requests[api_key],
+            "rpd_limit": self.RPD_LIMIT
+        }
+
+rate_limiter = RateLimiter()
+
+# Models
+class QueryRequest(BaseModel):
+    session_id: str
+    question: str
+    api_key: str
+
+class SessionResponse(BaseModel):
+    session_id: str
+    message: str
+    usage: dict
+
+class QueryResponse(BaseModel):
+    answer: str
+    session_id: str
+    usage: dict
+
+class UsageResponse(BaseModel):
+    rpm_used: int
+    rpm_limit: int
+    rpd_used: int
+    rpd_limit: int
+    rpm_remaining: int
+    rpd_remaining: int
+
+# Helper functions
+async def retry_with_backoff(func, max_retries=3, initial_delay=1):
+    """Retry function with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            result = func()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check if it's a rate limit error
+            if "quota" in error_msg or "rate limit" in error_msg or "429" in error_msg:
+                if attempt < max_retries - 1:
+                    delay = initial_delay * (2 ** attempt)
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"Rate limit exceeded. Please wait a moment and try again. Error: {str(e)}"
+                    )
+            else:
+                raise e
+    
+    raise HTTPException(status_code=500, detail="Max retries exceeded")
+
+def create_vector_store(text_content: str, api_key: str):
+    """Create vector store from text content."""
+    try:
+        print(f"[DEBUG] Creating document from text content (length: {len(text_content)})")
+        docs = [Document(page_content=text_content, metadata={"source": "biography"})]
+        
+        print("[DEBUG] Splitting text...")
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, 
+            chunk_overlap=200
+        )
+        splits = text_splitter.split_documents(docs)
+        print(f"[DEBUG] Created {len(splits)} splits")
+        
+        print("[DEBUG] Creating embeddings...")
+        embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/text-embedding-004", 
+        google_api_key=api_key
+)
+        print("[DEBUG] Building FAISS index...")
+        vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
+        print("[DEBUG] Vector store created successfully")
+        return vectorstore
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Exception in create_vector_store: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Please wait a moment and try again."
+            )
+        raise HTTPException(status_code=500, detail=f"Error creating vector store: {str(e)}")
+
+def create_rag_chain(vectorstore, api_key: str):
+    """Create RAG chain."""
+    if vectorstore is None:
+        raise HTTPException(status_code=500, detail="Vector store is None")
+    
+    try:
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash-exp",
+            temperature=0.3,
+            google_api_key=api_key,
+            convert_system_message_to_human=True
+        )
+
+        system_prompt = (
+            "You are an AI assistant representing the person described in the context. "
+            "Answer questions as if you are that person. "
+            "Use the following pieces of retrieved context to answer the question. "
+            "If the answer is not in the context, say you don't know based on the biography. "
+            "\n\n"
+            "{context}"
+        )
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{input}"),
+        ])
+
+        retriever = vectorstore.as_retriever()
+        question_answer_chain = create_stuff_documents_chain(llm, prompt)
+        rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+        return rag_chain
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating RAG chain: {str(e)}")
+
+# Endpoints
+@app.get("/")
+def read_root():
+    return {
+        "message": "Biography RAG API",
+        "status": "running",
+        "features": ["rate_limiting", "retry_logic", "usage_tracking"]
+    }
+
+@app.post("/upload", response_model=SessionResponse)
+async def upload_biography(file: UploadFile = File(...), api_key: str = ""):
+    """Upload biography file and create vector store."""
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API key is required")
+    
+    # Check rate limit
+    rate_check = rate_limiter.check_rate_limit(api_key)
+    if not rate_check["allowed"]:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": f"{rate_check['reason']}. Please try again later.",
+                "wait_time": rate_check.get("wait_time"),
+                "usage": {
+                    "rpm_used": rate_check["rpm_used"],
+                    "rpm_limit": rate_check["rpm_limit"],
+                    "rpd_used": rate_check["rpd_used"],
+                    "rpd_limit": rate_check["rpd_limit"]
+                }
+            }
+        )
+    
+    if not file.filename.endswith('.txt'):
+        raise HTTPException(status_code=400, detail="Only .txt files are supported")
+    
+    try:
+        content = await file.read()
+        text_content = content.decode('utf-8')
+        
+        session_id = str(uuid.uuid4())
+        
+        # Create vector store with retry logic
+        vectorstore = create_vector_store(text_content, api_key)
+        rag_chain = create_rag_chain(vectorstore, api_key)
+        
+        vector_stores[session_id] = vectorstore
+        rag_chains[session_id] = rag_chain
+        
+        return SessionResponse(
+            session_id=session_id,
+            message="Biography processed successfully",
+            usage={
+                "rpm_used": rate_check["rpm_used"],
+                "rpm_limit": rate_check["rpm_limit"],
+                "rpd_used": rate_check["rpd_used"],
+                "rpd_limit": rate_check["rpd_limit"],
+                "rpm_remaining": rate_check["rpm_limit"] - rate_check["rpm_used"],
+                "rpd_remaining": rate_check["rpd_limit"] - rate_check["rpd_used"]
+            }
+        )
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be UTF-8 encoded")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/query", response_model=QueryResponse)
+async def query_biography(request: QueryRequest):
+    """Query the biography."""
+    if request.session_id not in rag_chains:
+        raise HTTPException(status_code=404, detail="Session not found. Please upload a biography first.")
+    
+    # Check rate limit
+    rate_check = rate_limiter.check_rate_limit(request.api_key)
+    if not rate_check["allowed"]:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": f"{rate_check['reason']}. Please try again later.",
+                "wait_time": rate_check.get("wait_time"),
+                "usage": {
+                    "rpm_used": rate_check["rpm_used"],
+                    "rpm_limit": rate_check["rpm_limit"],
+                    "rpd_used": rate_check["rpd_used"],
+                    "rpd_limit": rate_check["rpd_limit"]
+                }
+            }
+        )
+    
+    try:
+        rag_chain = rag_chains[request.session_id]
+        response = rag_chain.invoke({"input": request.question})
+        
+        return QueryResponse(
+            answer=response['answer'],
+            session_id=request.session_id,
+            usage={
+                "rpm_used": rate_check["rpm_used"],
+                "rpm_limit": rate_check["rpm_limit"],
+                "rpd_used": rate_check["rpd_used"],
+                "rpd_limit": rate_check["rpd_limit"],
+                "rpm_remaining": rate_check["rpm_limit"] - rate_check["rpm_used"],
+                "rpd_remaining": rate_check["rpd_limit"] - rate_check["rpd_used"]
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Please wait a moment and try again."
+            )
+        raise HTTPException(status_code=500, detail=f"Error generating answer: {str(e)}")
+
+@app.get("/usage/{api_key}", response_model=UsageResponse)
+async def get_usage(api_key: str):
+    """Get current usage statistics for an API key."""
+    rate_limiter.reset_daily_if_needed(api_key)
+    
+    now = time.time()
+    recent_requests = [
+        req for req in rate_limiter.requests[api_key]
+        if now - req < 60
+    ]
+    rpm_used = len(recent_requests)
+    rpd_used = rate_limiter.daily_requests[api_key]
+    
+    return UsageResponse(
+        rpm_used=rpm_used,
+        rpm_limit=rate_limiter.RPM_LIMIT,
+        rpd_used=rpd_used,
+        rpd_limit=rate_limiter.RPD_LIMIT,
+        rpm_remaining=max(0, rate_limiter.RPM_LIMIT - rpm_used),
+        rpd_remaining=max(0, rate_limiter.RPD_LIMIT - rpd_used)
+    )
+
+@app.delete("/session/{session_id}")
+async def delete_session(session_id: str):
+    """Delete a session and free up resources."""
+    if session_id in vector_stores:
+        del vector_stores[session_id]
+    if session_id in rag_chains:
+        del rag_chains[session_id]
+    return {"message": "Session deleted successfully"}
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "active_sessions": len(vector_stores),
+        "rate_limiter": {
+            "rpm_limit": rate_limiter.RPM_LIMIT,
+            "rpd_limit": rate_limiter.RPD_LIMIT
+        }
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
