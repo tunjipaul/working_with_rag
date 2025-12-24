@@ -277,7 +277,7 @@ export default function BiographyRAG() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-6 pt-6">
@@ -292,7 +292,7 @@ export default function BiographyRAG() {
         {/* Error Alert */}
         {error && (
           <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
-            <AlertCircle className="w-5 h-5 text-red-600 mr-3 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-red-600 mr-3 shrink-0 mt-0.5" />
             <div className="flex-1">
               <h3 className="text-red-800 font-medium">Error</h3>
               <p className="text-red-700 text-sm mt-1">{error}</p>
@@ -418,7 +418,7 @@ export default function BiographyRAG() {
           </div>
 
           {/* Chat Area */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-md flex flex-col h-[600px]">
+          <div className="lg:col-span-2 bg-white rounded-lg shadow-md flex flex-col h-150">
             {/* Chat Header */}
             <div className="bg-indigo-600 text-white p-4 rounded-t-lg">
               <h2 className="text-xl font-semibold">Chat</h2>
@@ -465,7 +465,7 @@ export default function BiographyRAG() {
                       }`}
                     >
                       <div
-                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
                           msg.role === "user"
                             ? "bg-indigo-600 ml-3"
                             : "bg-gray-200 mr-3"

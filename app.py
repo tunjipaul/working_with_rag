@@ -167,7 +167,7 @@ def create_vector_store(text_content: str, api_key: str):
             chunk_overlap=200
         )
         splits = text_splitter.split_documents(docs)
-        print(f"[DEBUG] Created {len(splits)} splits")
+        print(f"[DEBUG] Created {len(splits)} splits") 
         
         print("[DEBUG] Creating embeddings...")
         embeddings = GoogleGenerativeAIEmbeddings(
