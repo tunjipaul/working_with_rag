@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI  # <--- CHANGED THIS
 from dotenv import load_dotenv
 import os
+import time
 
 # =============================================================================
 # STEP 1: SETUP & CONFIGURATION
@@ -124,6 +125,7 @@ print("="*70 + "\n")
 # =============================================================================
 
 def send_message(user_input: str, session_id: str = "default_customer"):
+    time.sleep(12)  # To avoid rate limits
     """
     Send a message to the chatbot and display the conversation.
     
