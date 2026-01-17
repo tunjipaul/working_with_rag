@@ -1,15 +1,3 @@
-"""
-MULTI-TOOL AGENT - Exercise Solution
-=====================================
-An agent with three custom tools:
-1. Weather tool (simulated data)
-2. Dictionary tool (word definitions)
-3. Web search tool (DuckDuckGo)
-
-Installation:
-pip install langgraph langchain langchain-google-genai python-dotenv duckduckgo-search
-"""
-
 from langgraph.graph import START, END, StateGraph, MessagesState
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode
@@ -19,6 +7,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 from typing import Literal
 import os
+import time
+import requests
 
 load_dotenv()
 google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -39,171 +29,159 @@ if not google_api_key:
 print("API key loaded")
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash", temperature=0, google_api_key=google_api_key
+    model="gemini-2.5-flash-lite", temperature=0, google_api_key=google_api_key
 )
 
-print("LLM initialized: Gemini 1.5 Flash")
+print("LLM initialized: Gemini 2.5 Flash Lite")
+
+weather_cache = {}
+WEATHER_CACHE_DURATION = 3600
 
 
 @tool
 def get_weather(city: str) -> str:
     """
-    Get the current weather for a specific city.
-    Use this tool when the user asks about weather conditions, temperature, or forecasts.
+    Get real-time weather for a city using Open-Meteo API (free, no API key).
+    Uses 1-hour caching to reduce API calls.
 
     Args:
-        city: The name of the city to check weather for (e.g., "Lagos", "London", "New York")
+        city: City name (e.g., "Lagos", "London", "New York")
 
     Returns:
-        Current weather information including temperature, conditions, and humidity
-
-    Examples:
-        - "What's the weather in Lagos?" → Use this tool with city="Lagos"
-        - "Is it raining in Paris?" → Use this tool with city="Paris"
+        Current weather with temperature, wind speed, and conditions
     """
-    weather_data = {
-        "lagos": {
-            "temp": "32°C",
-            "condition": "Partly cloudy",
-            "humidity": "75%",
-            "wind": "15 km/h",
-        },
-        "london": {
-            "temp": "12°C",
-            "condition": "Rainy",
-            "humidity": "85%",
-            "wind": "20 km/h",
-        },
-        "new york": {
-            "temp": "18°C",
-            "condition": "Sunny",
-            "humidity": "60%",
-            "wind": "10 km/h",
-        },
-        "tokyo": {
-            "temp": "22°C",
-            "condition": "Clear",
-            "humidity": "55%",
-            "wind": "8 km/h",
-        },
-        "paris": {
-            "temp": "15°C",
-            "condition": "Cloudy",
-            "humidity": "70%",
-            "wind": "12 km/h",
-        },
-        "dubai": {
-            "temp": "38°C",
-            "condition": "Hot and sunny",
-            "humidity": "45%",
-            "wind": "5 km/h",
-        },
-    }
+    cache_key = city.lower().strip()
+    current_time = time.time()
 
-    city_lower = city.lower().strip()
+    if cache_key in weather_cache:
+        cached_data, cached_time = weather_cache[cache_key]
+        if current_time - cached_time < WEATHER_CACHE_DURATION:
+            return cached_data
 
-    if city_lower in weather_data:
-        data = weather_data[city_lower]
-        return f"""Weather in {city.title()}:
- Temperature: {data['temp']}
- Conditions: {data['condition']}
- Humidity: {data['humidity']}
- Wind Speed: {data['wind']}"""
-    else:
-        return f"""Weather in {city.title()}:
- Temperature: 25°C
- Conditions: Partly cloudy
- Humidity: 65%
- Wind Speed: 12 km/h
-"""
+    try:
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=en&format=json"
+        geo_response = requests.get(geo_url, timeout=5)
+        geo_data = geo_response.json()
+
+        if not geo_data.get("results"):
+            return f"City '{city}' not found. Please check the spelling."
+
+        lat = geo_data["results"][0]["latitude"]
+        lon = geo_data["results"][0]["longitude"]
+
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        weather_response = requests.get(weather_url, timeout=5)
+        weather_data = weather_response.json()
+
+        current = weather_data["current_weather"]
+        temp = current["temperature"]
+        windspeed = current["windspeed"]
+
+        weather_codes = {
+            0: "Clear sky",
+            1: "Mainly clear",
+            2: "Partly cloudy",
+            3: "Overcast",
+            45: "Foggy",
+            48: "Foggy",
+            51: "Light drizzle",
+            53: "Drizzle",
+            55: "Heavy drizzle",
+            61: "Light rain",
+            63: "Rain",
+            65: "Heavy rain",
+            71: "Light snow",
+            73: "Snow",
+            75: "Heavy snow",
+            95: "Thunderstorm",
+        }
+        condition = weather_codes.get(current["weathercode"], "Unknown")
+
+        result = f"""Weather in {city.title()}:
+ Temperature: {temp}°C
+ Conditions: {condition}
+ Wind Speed: {windspeed} km/h"""
+
+        weather_cache[cache_key] = (result, current_time)
+        return result
+
+    except requests.exceptions.Timeout:
+        return f"Weather service timeout. Please try again."
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching weather: Network issue"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
-print("Weather tool created")
+print("Weather tool created (Open-Meteo API with caching)")
+
+dictionary_cache = {}
 
 
 @tool
 def define_word(word: str) -> str:
     """
-    Look up the definition of a word.
-    Use this tool when the user asks for the meaning, definition, or explanation of a word.
+    Look up word definition using WordNet (offline, comprehensive).
+    Uses permanent caching since definitions don't change.
 
     Args:
-        word: The word to define (e.g., "ephemeral", "serendipity", "ubiquitous")
+        word: The word to define (e.g., "ephemeral", "serendipity")
 
     Returns:
-        The definition of the word with part of speech and example usage
-
-    Examples:
-        - "What does ephemeral mean?" → Use this tool with word="ephemeral"
-        - "Define serendipity" → Use this tool with word="serendipity"
+        Definition with examples and synonyms
     """
-    dictionary = {
-        "ephemeral": {
-            "part_of_speech": "adjective",
-            "definition": "Lasting for a very short time; fleeting or transitory",
-            "example": "The ephemeral beauty of cherry blossoms lasts only a week.",
-            "synonyms": "temporary, transient, fleeting",
-        },
-        "serendipity": {
-            "part_of_speech": "noun",
-            "definition": "The occurrence of events by chance in a happy or beneficial way",
-            "example": "Finding that book was pure serendipity.",
-            "synonyms": "luck, fortune, chance",
-        },
-        "ubiquitous": {
-            "part_of_speech": "adjective",
-            "definition": "Present, appearing, or found everywhere",
-            "example": "Smartphones have become ubiquitous in modern society.",
-            "synonyms": "omnipresent, pervasive, universal",
-        },
-        "pragmatic": {
-            "part_of_speech": "adjective",
-            "definition": "Dealing with things sensibly and realistically; practical",
-            "example": "She took a pragmatic approach to solving the problem.",
-            "synonyms": "practical, realistic, sensible",
-        },
-        "eloquent": {
-            "part_of_speech": "adjective",
-            "definition": "Fluent or persuasive in speaking or writing",
-            "example": "The speaker gave an eloquent speech that moved the audience.",
-            "synonyms": "articulate, expressive, fluent",
-        },
-        "resilient": {
-            "part_of_speech": "adjective",
-            "definition": "Able to withstand or recover quickly from difficult conditions",
-            "example": "The resilient community rebuilt after the disaster.",
-            "synonyms": "strong, tough, hardy",
-        },
-        "ambiguous": {
-            "part_of_speech": "adjective",
-            "definition": "Open to more than one interpretation; not having one obvious meaning",
-            "example": "The politician's ambiguous statement confused voters.",
-            "synonyms": "unclear, vague, equivocal",
-        },
-    }
+    cache_key = word.lower().strip()
 
-    word_lower = word.lower().strip()
+    if cache_key in dictionary_cache:
+        return dictionary_cache[cache_key]
 
-    if word_lower in dictionary:
-        entry = dictionary[word_lower]
-        return f""" Definition of "{word.title()}":
+    try:
+        from nltk.corpus import wordnet
 
-     Part of Speech: {entry['part_of_speech']}
+        synsets = wordnet.synsets(cache_key)
 
-     Definition: {entry['definition']}
+        if not synsets:
+            result = f"No definition found for '{word}'. Try checking the spelling or use web search."
+            dictionary_cache[cache_key] = result
+            return result
 
-     Example: {entry['example']}
+        result = f"Definition of '{word}':\n\n"
 
-     Synonyms: {entry['synonyms']}"""
-    else:
-        return f""" Word: "{word}"
+        for i, synset in enumerate(synsets[:2], 1):
+            pos = synset.pos()
+            pos_map = {"n": "noun", "v": "verb", "a": "adjective", "r": "adverb"}
+            pos_name = pos_map.get(pos, pos)
 
-     Definition not found in dictionary.
+            result += f"{i}. [{pos_name}] {synset.definition()}\n"
 
-     Tip: Try searching the web for the definition, or check if the spelling is correct."""
+            if synset.examples():
+                result += f"   Example: {synset.examples()[0]}\n"
+
+        synonyms = set()
+        for syn in synsets[:3]:
+            for lemma in syn.lemmas():
+                if lemma.name().lower() != cache_key:
+                    synonyms.add(lemma.name().replace("_", " "))
+
+        if synonyms:
+            result += f"\nSynonyms: {', '.join(list(synonyms)[:5])}"
+
+        dictionary_cache[cache_key] = result
+        return result
+
+    except ImportError:
+        return """WordNet not installed!
+
+To enable dictionary:
+1. pip install nltk
+2. python -c "import nltk; nltk.download('wordnet'); nltk.download('omw-1.4')"
+
+Then restart the agent."""
+    except Exception as e:
+        return f"Error looking up word: {str(e)}"
 
 
-print("Dictionary tool created")
+print("Dictionary tool created (WordNet with caching)")
 
 
 @tool
@@ -318,198 +296,61 @@ agent = builder.compile(checkpointer=memory)
 
 print("Multi-tool agent compiled with memory")
 
-
-def query_agent(user_input: str, thread_id: str = "default"):
-    """Query the agent and display results."""
-    print(f"\n{'='*70}")
-    print(f"User: {user_input}")
-    print(f"{'='*70}\n")
-
-    result = agent.invoke(
-        {"messages": [HumanMessage(content=user_input)]},
-        config={"configurable": {"thread_id": thread_id}},
-    )
-
-    used_tool = None
-
-    for message in result["messages"]:
-        if isinstance(message, AIMessage):
-            if message.tool_calls:
-                tool_name = message.tool_calls[0]["name"]
-                used_tool = tool_name
-                print(f"Agent: [Calling {tool_name} tool...]")
-            elif message.content and not message.tool_calls:
-                print(f"Agent: {message.content}")
-
-    if used_tool:
-        print(f"\nTool Used: {used_tool}")
-    else:
-        print(f"\nDecision: Answered directly (no tool needed)")
-
-    print(f"{'='*70}\n")
-
-
-def run_tests():
-    """Run comprehensive tests of all tools."""
-
-    print(
-        """
-╔════════════════════════════════════════════════════════════════════╗
-║                                                                    ║
-║        MULTI-TOOL AGENT - COMPREHENSIVE TESTING             ║
-║                                                                    ║
-╚════════════════════════════════════════════════════════════════════╝
-    """
-    )
-
-    print("\nTEST 1: WEATHER QUERIES")
-    query_agent("What's the weather in Lagos?", "test1")
-    query_agent("Is it raining in London?", "test1")
-
-    print("\nTEST 2: DICTIONARY QUERIES")
-    query_agent("Define the word 'ephemeral'", "test2")
-    query_agent("What does serendipity mean?", "test2")
-
-    print("\nTEST 3: WEB SEARCH QUERIES")
-    query_agent("Search for latest AI news", "test3")
-    query_agent("Find information about LangGraph", "test3")
-
-    print("\nTEST 4: DIRECT ANSWERS (No Tool)")
-    query_agent("What's the capital of France?", "test4")
-    query_agent("Hello! How are you?", "test4")
-
-    print("\nTEST 5: MEMORY TEST")
-    query_agent("What's the weather in Tokyo?", "memory_test")
-    query_agent("Now check Paris", "memory_test")
-    query_agent("Which city was warmer?", "memory_test")
-
-    print("\nTEST 6: CORRECT TOOL SELECTION")
-    query_agent("What does ubiquitous mean and what's the weather in Dubai?", "test6")
-
-
 if __name__ == "__main__":
-    run_tests()
-
     print("\n" + "=" * 70)
-    print("Would you like to try INTERACTIVE mode?")
+    print("  Interactive Mode Started!")
     print("=" * 70)
+    print("\nCommands:")
+    print("  - Type your query and press Enter")
+    print("  - Type 'exit' or 'quit' to stop\n")
 
-    response = input("\nStart interactive chat? (yes/no): ").strip().lower()
+    last_request_time = 0
+    min_delay = 12
 
-    if response in ["yes", "y"]:
-        print("\n🎮 Interactive Mode Started!")
-        print("Commands:")
-        print("  - Type your query and press Enter")
-        print("  - Type 'exit' or 'quit' to stop\n")
+    while True:
+        user_input = input("You: ").strip()
 
-        while True:
-            user_input = input("You: ").strip()
+        if user_input.lower() in ["exit", "quit", "bye"]:
+            print("\n Goodbye!\n")
+            break
 
-            if user_input.lower() in ["exit", "quit", "bye"]:
-                print("\n Goodbye!\n")
-                break
+        if not user_input:
+            continue
 
-            if not user_input:
-                continue
+        time_since_last = time.time() - last_request_time
+        if time_since_last < min_delay and last_request_time > 0:
+            wait_time = min_delay - time_since_last
+            print(f"\n⏳ Rate limit: waiting {wait_time:.1f}s before next request...\n")
+            time.sleep(wait_time)
 
+        last_request_time = time.time()
+
+        try:
             result = agent.invoke(
                 {"messages": [HumanMessage(content=user_input)]},
                 config={"configurable": {"thread_id": "interactive"}},
             )
 
-            agent_response = result["messages"][-1].content
-            print(f"\nAgent: {agent_response}\n")
+            last_message = result["messages"][-1]
+
+            if hasattr(last_message, "content") and last_message.content:
+                agent_response = last_message.content
+                print(f"\nAgent: {agent_response}\n")
+            elif hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                print(f"\nAgent: [Using tools to answer...]\n")
+            else:
+                print(f"\nAgent: [No response generated]\n")
+                print(f"Debug - Message type: {type(last_message)}\n")
+
             print("-" * 70 + "\n")
-    else:
-        print("\n All tests complete!")
 
-
-"""
-QUICK START:
-============
-
-1. Install dependencies:
-   pip install langgraph langchain langchain-google-genai python-dotenv duckduckgo-search
-
-2. Get Google AI API key:
-   https://aistudio.google.com/app/apikey
-
-3. Create .env file:
-   GOOGLE_API_KEY=your_key_here
-
-4. Run the script:
-   python multi_tool_agent.py
-
-
-EXAMPLE QUERIES:
-================
-
-Weather:
-- "What's the weather in Lagos?"
-- "Is it raining in London?"
-- "How hot is it in Dubai?"
-
-Dictionary:
-- "Define ephemeral"
-- "What does serendipity mean?"
-- "Explain the word pragmatic"
-
-Web Search:
-- "Search for latest AI news"
-- "Find Python tutorials for beginners"
-- "Look up who won the Nobel Prize 2024"
-
-No Tool Needed:
-- "Hello!"
-- "What's 2+2?"
-- "What's the capital of France?"
-
-
-KEY FEATURES:
-=============
-
-Three Specialized Tools
-   - Simulated weather data for major cities
-   - Built-in dictionary with common words
-   - Real-time web search via DuckDuckGo
-
- Intelligent Tool Selection
-   - Agent chooses the right tool automatically
-   - Can answer without tools when appropriate
-   - Handles edge cases gracefully
-
- Conversation Memory
-   - Remembers context within session
-   - Can reference previous tool results
-   - Multi-turn conversations work naturally
-
- Error Handling
-   - Graceful fallbacks for unknown cities/words
-   - Clear error messages for tool failures
-   - Helps user rephrase failed queries
-
-
-EXERCISE REQUIREMENTS CHECKLIST:
-=================================
-
-Weather tool (simulated)
-Dictionary tool (with database)
-Web search tool (DuckDuckGo integration)
-@tool decorator for all tools
-Tools bound to LLM
-Conditional routing implemented
-Handles cases where no tool is needed
-Memory across conversations
-Comprehensive testing
-
-
-NEXT STEPS:
-===========
-
-1. Add more cities to weather database
-2. Expand dictionary with more words
-3. Add more tools (calculator, translator, etc.)
-4. Improve error handling
-5. Add logging for debugging
-6. Create web UI with Gradio/Streamlit
-"""
+        except Exception as e:
+            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                print(f"\n Quota exceeded! You've used up your daily quota.")
+                print(
+                    f"Your quota will reset tomorrow. Check usage at: https://ai.dev/rate-limit\n"
+                )
+                break
+            else:
+                print(f"\nError: {str(e)}\n")
+                print("-" * 70 + "\n")

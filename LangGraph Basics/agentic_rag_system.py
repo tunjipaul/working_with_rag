@@ -1,10 +1,8 @@
-# Agentic RAG System - Python Programming Documentation
-# Exercise 1: Complete Implementation with Rate Limiting
-
 import os
 import time
 from typing import Literal
 from dotenv import load_dotenv
+import numpy as np
 
 from langgraph.graph import START, END, StateGraph, MessagesState
 from langgraph.checkpoint.memory import MemorySaver
@@ -16,42 +14,32 @@ from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmb
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# ============================================================================
-# SECTION 1: RATE LIMITING SETUP
-# ============================================================================
 
 class RateLimiter:
     """Rate limiter to handle API quota restrictions"""
-    
+
     def __init__(self, calls_per_minute=5, buffer_seconds=2):
         self.calls_per_minute = calls_per_minute
         self.buffer_seconds = buffer_seconds
         self.call_times = []
-    
+
     def wait_if_needed(self):
         """Wait if we're approaching rate limit"""
         current_time = time.time()
-        
-        # Remove calls older than 1 minute
+
         self.call_times = [t for t in self.call_times if current_time - t < 60]
-        
-        # If at limit, wait
+
         if len(self.call_times) >= self.calls_per_minute:
             wait_time = 60 - (current_time - self.call_times[0]) + self.buffer_seconds
             if wait_time > 0:
-                print(f"⏳ Rate limit approaching. Waiting {wait_time:.1f} seconds...")
+                print(f"Rate limit approaching. Waiting {wait_time:.1f} seconds...")
                 time.sleep(wait_time)
                 self.call_times = []
-        
-        # Record this call
+
         self.call_times.append(time.time())
 
-# Initialize rate limiter
-rate_limiter = RateLimiter(calls_per_minute=4)  # Conservative: 4 calls/min instead of 5
 
-# ============================================================================
-# SECTION 2: ENVIRONMENT SETUP
-# ============================================================================
+rate_limiter = RateLimiter(calls_per_minute=4)
 
 load_dotenv()
 google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -59,28 +47,17 @@ google_api_key = os.getenv("GOOGLE_API_KEY")
 if not google_api_key:
     raise ValueError("GOOGLE_API_KEY not found! Please set it in your .env file.")
 
-print("✅ API key loaded")
-
-# ============================================================================
-# SECTION 3: INITIALIZE LLM AND EMBEDDINGS
-# ============================================================================
+print("API key loaded")
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash-exp",
-    temperature=0.3,
-    api_key=google_api_key
+    model="gemini-2.0-flash-exp", temperature=0.3, api_key=google_api_key
 )
 
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/embedding-001",
-    api_key=google_api_key
+    model="models/embedding-001", api_key=google_api_key
 )
 
-print("✅ LLM and embeddings initialized")
-
-# ============================================================================
-# SECTION 4: CREATE SAMPLE DOCUMENTS (Python Programming Domain)
-# ============================================================================
+print("LLM and embeddings initialized")
 
 sample_documents = [
     Document(
@@ -92,7 +69,6 @@ They help organize code and make it more maintainable.
 
 Basic Function Syntax:
 def function_name(parameters):
-    # function body
     return result
 
 Example:
@@ -117,9 +93,8 @@ Best Practices:
 4. Avoid side effects when possible
 5. Test functions independently
 """,
-        metadata={"source": "python_functions.txt", "topic": "functions"}
+        metadata={"source": "python_functions.txt", "topic": "functions"},
     ),
-    
     Document(
         page_content="""
 Python Lists and List Comprehensions
@@ -156,9 +131,8 @@ Performance:
 List comprehensions are generally faster than equivalent for loops.
 Use them for simple transformations, not complex logic.
 """,
-        metadata={"source": "python_lists.txt", "topic": "data_structures"}
+        metadata={"source": "python_lists.txt", "topic": "data_structures"},
     ),
-    
     Document(
         page_content="""
 Python Exception Handling
@@ -188,7 +162,7 @@ try:
 except Exception:
     handle_error()
 finally:
-    cleanup()  # Always runs
+    cleanup()
 
 Else Block:
 Executes only if no exception occurred.
@@ -201,7 +175,7 @@ else:
 
 Raising Exceptions:
 raise ValueError("Invalid input")
-raise  # Re-raise current exception
+raise
 
 Custom Exceptions:
 class CustomError(Exception):
@@ -214,9 +188,8 @@ Best Practices:
 4. Log exceptions appropriately
 5. Don't swallow exceptions silently
 """,
-        metadata={"source": "python_exceptions.txt", "topic": "error_handling"}
+        metadata={"source": "python_exceptions.txt", "topic": "error_handling"},
     ),
-    
     Document(
         page_content="""
 Python Decorators Explained
@@ -227,9 +200,7 @@ They use the @decorator syntax and are powerful for cross-cutting concerns.
 Basic Decorator:
 def my_decorator(func):
     def wrapper(*args, **kwargs):
-        # Do something before
         result = func(*args, **kwargs)
-        # Do something after
         return result
     return wrapper
 
@@ -286,9 +257,8 @@ Built-in Decorators:
 - @classmethod: Method with class reference
 - @functools.wraps: Preserve function metadata
 """,
-        metadata={"source": "python_decorators.txt", "topic": "advanced"}
+        metadata={"source": "python_decorators.txt", "topic": "advanced"},
     ),
-    
     Document(
         page_content="""
 Python File I/O Operations
@@ -308,7 +278,6 @@ Modes:
 Best Practice - Context Manager:
 with open('file.txt', 'r') as file:
     content = file.read()
-# File automatically closed
 
 Reading Methods:
 - read(): Entire file as string
@@ -328,25 +297,21 @@ with open('image.png', 'rb') as file:
 Working with JSON:
 import json
 
-# Write JSON
 data = {'name': 'John', 'age': 30}
 with open('data.json', 'w') as f:
     json.dump(data, f, indent=4)
 
-# Read JSON
 with open('data.json', 'r') as f:
     data = json.load(f)
 
 Working with CSV:
 import csv
 
-# Write CSV
 with open('data.csv', 'w', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(['Name', 'Age'])
     writer.writerow(['John', 30])
 
-# Read CSV
 with open('data.csv', 'r') as f:
     reader = csv.reader(f)
     for row in reader:
@@ -369,99 +334,113 @@ if path.exists():
     content = path.read_text()
     path.write_text('New content')
 """,
-        metadata={"source": "python_file_io.txt", "topic": "io"}
-    )
+        metadata={"source": "python_file_io.txt", "topic": "io"},
+    ),
 ]
 
-print(f"✅ Created {len(sample_documents)} sample documents")
+print(f"Created {len(sample_documents)} sample documents")
 
-# ============================================================================
-# SECTION 5: TEXT SPLITTING
-# ============================================================================
-
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=50
-)
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 
 doc_splits = text_splitter.split_documents(sample_documents)
-print(f"✅ Created {len(doc_splits)} chunks")
-
-# ============================================================================
-# SECTION 6: CREATE VECTOR STORE
-# ============================================================================
+print(f"Created {len(doc_splits)} chunks")
 
 chroma_path = "./chroma_db_python_docs"
 
 vectorstore = Chroma(
     collection_name="python_docs",
     persist_directory=chroma_path,
-    embedding_function=embeddings
+    embedding_function=embeddings,
 )
 
-# Add documents with rate limiting
-print("📚 Adding documents to vector store...")
-batch_size = 3  # Small batches to avoid rate limits
+print("Adding documents to vector store...")
+batch_size = 3
 
 for i in range(0, len(doc_splits), batch_size):
-    batch = doc_splits[i:i+batch_size]
+    batch = doc_splits[i : i + batch_size]
     rate_limiter.wait_if_needed()
     vectorstore.add_documents(documents=batch)
     print(f"   Added batch {i//batch_size + 1}/{(len(doc_splits)-1)//batch_size + 1}")
 
-print(f"✅ Vector store created with {len(doc_splits)} chunks")
+print(f"Vector store created with {len(doc_splits)} chunks")
 
-# ============================================================================
-# SECTION 7: CREATE RETRIEVAL TOOL
-# ============================================================================
+retrieval_cache = []
+
+
+def cosine_similarity(vec1, vec2):
+    """Calculate cosine similarity between two vectors"""
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+
+
+def check_semantic_cache(query, threshold=0.92):
+    """Check if a semantically similar query exists in cache"""
+    if not retrieval_cache:
+        return None
+
+    query_embedding = embeddings.embed_query(query)
+
+    for cached_embedding, cached_result, cached_query in retrieval_cache:
+        similarity = cosine_similarity(query_embedding, cached_embedding)
+        if similarity >= threshold:
+            print(f"[Cache hit! Similarity: {similarity:.2f} with '{cached_query}']")
+            return cached_result
+
+    return None
+
 
 @tool
 def retrieve_python_docs(query: str) -> str:
     """
     Search Python programming documentation for relevant information.
-    
+
     Use this tool when you need information about:
     - Python syntax and features
     - How to use specific Python functions or methods
     - Code examples and best practices
     - Python programming concepts
-    
+
     Do NOT use this for:
     - General greetings or casual conversation
     - Simple math calculations
     - Questions about other programming languages
     - General knowledge not related to Python
-    
+
     Args:
         query: The search query about Python programming
-        
+
     Returns:
         Relevant documentation excerpts that can help answer the question
     """
+    cached_result = check_semantic_cache(query)
+    if cached_result:
+        return cached_result
+
     retriever = vectorstore.as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": 3, "fetch_k": 6}
+        search_type="mmr", search_kwargs={"k": 3, "fetch_k": 6}
     )
-    
+
     results = retriever.invoke(query)
-    
+
     if not results:
         return "No relevant Python documentation found."
-    
+
     formatted = "\n\n---\n\n".join(
         f"Document {i+1} (Topic: {doc.metadata.get('topic', 'unknown')}):\n{doc.page_content}"
         for i, doc in enumerate(results)
     )
-    
+
+    query_embedding = embeddings.embed_query(query)
+    retrieval_cache.append((query_embedding, formatted, query))
+
+    print(f"[Cached new query: '{query}']")
+
     return formatted
 
-print("✅ Retrieval tool created")
 
-# ============================================================================
-# SECTION 8: BUILD AGENTIC RAG SYSTEM
-# ============================================================================
+print("Retrieval tool created with semantic caching")
 
-system_prompt = SystemMessage(content="""You are a helpful Python programming assistant with access to Python documentation.
+system_prompt = SystemMessage(
+    content="""You are a helpful Python programming assistant with access to Python documentation.
 
 RETRIEVAL DECISION RULES:
 
@@ -482,103 +461,91 @@ DO retrieve for:
 
 When you retrieve documents, cite them clearly. If documents don't contain the answer, say so.
 Keep responses concise but informative.
-""")
+"""
+)
 
-# Bind tool to LLM
 tools = [retrieve_python_docs]
 llm_with_tools = llm.bind_tools(tools)
+
 
 def assistant(state: MessagesState) -> dict:
     """Assistant node with rate limiting"""
     messages = [system_prompt] + state["messages"]
-    
-    # Apply rate limiting before LLM call
+
     rate_limiter.wait_if_needed()
-    
+
     response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
+
 
 def should_continue(state: MessagesState) -> Literal["tools", "__end__"]:
     """Decide whether to call tools or finish"""
     last_message = state["messages"][-1]
-    
+
     if last_message.tool_calls:
         return "tools"
     return "__end__"
 
-# Build graph
+
 builder = StateGraph(MessagesState)
 builder.add_node("assistant", assistant)
 builder.add_node("tools", ToolNode(tools))
 
 builder.add_edge(START, "assistant")
 builder.add_conditional_edges(
-    "assistant",
-    should_continue,
-    {"tools": "tools", "__end__": END}
+    "assistant", should_continue, {"tools": "tools", "__end__": END}
 )
 builder.add_edge("tools", "assistant")
 
-# Add memory
 memory = MemorySaver()
 agent = builder.compile(checkpointer=memory)
 
-print("✅ Agentic RAG system compiled")
+print("Agentic RAG system compiled")
 
-# ============================================================================
-# SECTION 9: QUERY FUNCTION
-# ============================================================================
 
 def query_agent(user_input: str, thread_id: str = "default_session"):
     """Query the agent with rate limiting"""
     print(f"\n{'='*70}")
-    print(f"👤 User: {user_input}")
+    print(f"User: {user_input}")
     print(f"{'='*70}\n")
-    
+
     rate_limiter.wait_if_needed()
-    
+
     result = agent.invoke(
         {"messages": [HumanMessage(content=user_input)]},
-        config={"configurable": {"thread_id": thread_id}}
+        config={"configurable": {"thread_id": thread_id}},
     )
-    
-    # Analyze result
+
     used_retrieval = False
     final_answer = None
-    
+
     for message in result["messages"]:
         if isinstance(message, AIMessage):
             if message.tool_calls:
                 used_retrieval = True
-                print(f"🔍 Agent: [Calling retrieval tool...]")
+                print(f"Agent: [Calling retrieval tool...]")
             if message.content and not message.tool_calls:
                 final_answer = message.content
-    
+
     if final_answer:
-        print(f"🤖 Agent: {final_answer}")
-    
-    print(f"\n📊 Decision: {'USED RETRIEVAL' if used_retrieval else 'ANSWERED DIRECTLY'}")
+        print(f"Agent: {final_answer}")
+
+    print(f"\nDecision: {'USED RETRIEVAL' if used_retrieval else 'ANSWERED DIRECTLY'}")
     print(f"{'='*70}\n")
-    
+
     return final_answer
 
-# ============================================================================
-# SECTION 10: TEST CASES
-# ============================================================================
 
-print("\n" + "="*70)
+print("\n" + "=" * 70)
 print("TESTING AGENTIC RAG SYSTEM")
-print("="*70)
+print("=" * 70)
 
 test_queries = [
-    # Should NOT retrieve (5 queries)
     ("Hello! What can you help me with?", False),
     ("Thank you for your help!", False),
     ("What is 5 + 5?", False),
     ("Tell me about JavaScript", False),
     ("How are you today?", False),
-    
-    # SHOULD retrieve (5 queries)
     ("How do I create a function in Python?", True),
     ("What are list comprehensions?", True),
     ("Explain exception handling in Python", True),
@@ -588,31 +555,25 @@ test_queries = [
 
 results = []
 
-print("\n🧪 Running Test Cases...\n")
+print("\nRunning Test Cases...\n")
 
 for i, (query, should_retrieve) in enumerate(test_queries, 1):
     print(f"\n{'='*70}")
     print(f"TEST {i}/10: {query}")
     print(f"Expected: {'RETRIEVE' if should_retrieve else 'DIRECT'}")
     print(f"{'='*70}")
-    
-    # Query with unique thread ID
+
     query_agent(query, thread_id=f"test_{i}")
-    
-    # Small delay between tests
+
     time.sleep(2)
 
-print("\n" + "="*70)
-print("✅ ALL TESTS COMPLETED")
-print("="*70)
+print("\n" + "=" * 70)
+print("ALL TESTS COMPLETED")
+print("=" * 70)
 
-# ============================================================================
-# SECTION 11: INTERACTIVE MODE
-# ============================================================================
-
-print("\n" + "="*70)
+print("\n" + "=" * 70)
 print("INTERACTIVE MODE")
-print("="*70)
+print("=" * 70)
 print("You can now ask questions! Type 'quit' to exit.\n")
 
 session_id = "interactive_session"
@@ -620,19 +581,19 @@ session_id = "interactive_session"
 while True:
     try:
         user_input = input("You: ").strip()
-        
-        if user_input.lower() in ['quit', 'exit', 'q']:
-            print("👋 Goodbye!")
+
+        if user_input.lower() in ["quit", "exit", "q"]:
+            print("Goodbye!")
             break
-        
+
         if not user_input:
             continue
-        
+
         query_agent(user_input, thread_id=session_id)
-        
+
     except KeyboardInterrupt:
-        print("\n👋 Goodbye!")
+        print("\nGoodbye!")
         break
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         print("Continuing...")
