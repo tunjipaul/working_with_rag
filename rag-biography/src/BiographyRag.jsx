@@ -155,23 +155,23 @@ export default function BiographyRAG() {
   };
 
   const handleSendMessage = async () => {
-    console.log('Send message started');
-    console.log('Input:', input);
-    console.log('Session ID:', sessionId);
-    
+    console.log("Send message started");
+    console.log("Input:", input);
+    console.log("Session ID:", sessionId);
+
     if (!input.trim() || !sessionId) {
-      console.log('Cannot send: input empty or no session');
+      console.log("Cannot send: input empty or no session");
       return;
     }
 
-    const userMessage = { role: 'user', content: input };
+    const userMessage = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     const currentInput = input;
-    setInput('');
+    setInput("");
     setLoading(true);
     setError(null);
 
-    console.log('Sending query:', currentInput);
+    console.log("Sending query:", currentInput);
 
     try {
       const payload = {
@@ -179,42 +179,46 @@ export default function BiographyRAG() {
         question: currentInput,
         api_key: apiKey,
       };
-      console.log('Request payload:', payload);
+      console.log("Request payload:", payload);
 
       const response = await fetch(`${API_URL}/query`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
       });
 
-      console.log('Response status:', response.status);
+      console.log("Response status:", response.status);
       const data = await response.json();
-      console.log('Full Response data:', JSON.stringify(data, null, 2));
+      console.log("Full Response data:", JSON.stringify(data, null, 2));
 
       if (response.status === 429) {
         const waitTime = data.detail?.wait_time || 10;
-        console.warn('Rate limited. Wait time:', waitTime);
-        setError(`Rate limit hit. Please wait ${Math.ceil(waitTime)} seconds before trying again.`);
+        console.warn("Rate limited. Wait time:", waitTime);
+        setError(
+          `Rate limit hit. Please wait ${Math.ceil(
+            waitTime
+          )} seconds before trying again.`
+        );
         setMessages((prev) => prev.slice(0, -1));
         setLoading(false);
         return;
       }
 
       if (!response.ok) {
-        console.error('Query failed:', data);
-        handleError(data, 'Query failed');
+        console.error("Query failed:", data);
+        handleError(data, "Query failed");
         setMessages((prev) => prev.slice(0, -1));
         return;
       }
 
-      console.log('Query successful! Answer:', data.answer);
-      const assistantMessage = { role: 'assistant', content: data.answer };
+      console.log("Query successful! Answer:", data.answer);
+      const assistantMessage = { role: "assistant", content: data.answer };
       setMessages((prev) => [...prev, assistantMessage]);
       setUsage(data.usage);
     } catch (error) {
-      console.error('Network error during query:', error);
+      console.error("Network error during query:", error);
       setError(`Network error: ${error.message}`);
       setMessages((prev) => prev.slice(0, -1));
     } finally {
