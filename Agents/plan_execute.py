@@ -5,21 +5,21 @@ import operator
 
 from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+from rich.console import Console
+from rich.markdown import Markdown
 
 load_dotenv()
-google_api_key = os.getenv("GOOGLE_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY")
 
-if not google_api_key:
-    raise ValueError("GOOGLE_API_KEY not found! Please set it in your .env file.")
+if not groq_api_key:
+    raise ValueError("GROQ_API_KEY not found! Please set it in your .env file.")
 
 print("API key loaded")
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite", temperature=0.3, api_key=google_api_key
-)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.3, api_key=groq_api_key)
 
-print("LLM initialized: Gemini 2.5 Flash Lite")
+print("LLM initialized: Llama 3.3 70B via Groq")
 
 
 class PlanExecuteReflectState(TypedDict):
@@ -58,7 +58,8 @@ Each step should be clear and actionable."""
 
     print("\nPLAN CREATED:")
     for step in steps:
-        print(f"  {step}")
+        console.print(f"  ", end="")
+        console.print(Markdown(step))
     print()
 
     return {"plan": steps, "current_step": 0, "results": [], "reflection_iterations": 0}
@@ -71,7 +72,8 @@ def executor(state: PlanExecuteReflectState) -> dict:
 
     current_step = state["plan"][state["current_step"]]
 
-    print(f"Executing: {current_step}")
+    console.print("Executing: ", end="")
+    console.print(Markdown(current_step))
 
     prompt = f"""Previous results: {state.get('results', [])}
 
@@ -203,6 +205,8 @@ plan_execute_reflect_agent = plan_execute_reflect_builder.compile()
 
 print("Plan-Execute-Reflect hybrid agent created")
 
+console = Console()
+
 
 def test_hybrid_agent(task: str):
     """Test the Plan-Execute-Reflect hybrid agent."""
@@ -228,21 +232,24 @@ def test_hybrid_agent(task: str):
     print("=" * 80)
     print(f"\nPlan ({len(result['plan'])} steps):")
     for step in result["plan"]:
-        print(f"  {step}")
+        console.print(f"  ", end="")
+        console.print(Markdown(step))
 
     print(f"\nExecution Results:")
     for i, res in enumerate(result["results"], 1):
-        print(f"  {i}. {res[:100]}...")
+        console.print(f"  {i}. ", end="")
+        console.print(Markdown(res[:200] + "..."))
 
     print(f"\nReflection Iterations: {result['reflection_iterations']}")
 
     if result.get("critique"):
-        print(f"\nFinal Critique: {result['critique'][:150]}...")
+        print(f"\nFinal Critique: ")
+        console.print(Markdown(result["critique"][:300] + "..."))
 
     print("\n" + "=" * 80)
     print("FINAL OUTPUT:")
     print("=" * 80)
-    print(result["final_output"])
+    console.print(Markdown(result["final_output"]))
     print("=" * 80 + "\n")
 
     return result

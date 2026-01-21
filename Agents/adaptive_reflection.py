@@ -5,21 +5,21 @@ from pydantic import BaseModel, Field
 
 from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+from rich.console import Console
+from rich.markdown import Markdown
 
 load_dotenv()
-google_api_key = os.getenv("GOOGLE_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY")
 
-if not google_api_key:
-    raise ValueError("GOOGLE_API_KEY not found! Please set it in your .env file.")
+if not groq_api_key:
+    raise ValueError("GROQ_API_KEY not found! Please set it in your .env file.")
 
 print("API key loaded")
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite", temperature=0.3, api_key=google_api_key
-)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.3, api_key=groq_api_key)
 
-print("LLM initialized: Gemini 2.5 Flash Lite")
+print("LLM initialized: Llama 3.3 70B via Groq")
 
 
 class QualityScore(BaseModel):
@@ -163,6 +163,8 @@ adaptive_reflection_agent = reflection_builder.compile()
 
 print("Adaptive Reflection agent created with quality metrics")
 
+console = Console()
+
 
 def test_adaptive_reflection(task: str):
     """Test the adaptive reflection agent."""
@@ -177,7 +179,7 @@ def test_adaptive_reflection(task: str):
     print("\n" + "=" * 80)
     print("FINAL OUTPUT:")
     print("=" * 80)
-    print(result["final_output"])
+    console.print(Markdown(result["final_output"]))
 
     print("\n" + "=" * 80)
     print("SCORE PROGRESSION:")

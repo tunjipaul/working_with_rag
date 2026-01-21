@@ -6,21 +6,21 @@ import operator
 from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+from rich.console import Console
+from rich.markdown import Markdown
 
 load_dotenv()
-google_api_key = os.getenv("GOOGLE_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY")
 
-if not google_api_key:
-    raise ValueError("GOOGLE_API_KEY not found! Please set it in your .env file.")
+if not groq_api_key:
+    raise ValueError("GROQ_API_KEY not found! Please set it in your .env file.")
 
 print("API key loaded")
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite", temperature=0.7, api_key=google_api_key
-)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.7, api_key=groq_api_key)
 
-print("LLM initialized: Gemini 2.5 Flash Lite")
+print("LLM initialized: Llama 3.3 70B via Groq")
 
 
 @tool
@@ -227,6 +227,8 @@ content_pipeline = content_pipeline_builder.compile()
 
 print("Content pipeline multi-agent system created!")
 
+console = Console()
+
 
 def run_content_pipeline(task: str):
     """Run the content pipeline on a task."""
@@ -247,7 +249,7 @@ def run_content_pipeline(task: str):
     print("\n" + "=" * 80)
     print("FINAL FORMATTED OUTPUT:")
     print("=" * 80)
-    print(result["formatted_output"])
+    console.print(Markdown(result["formatted_output"]))
     print("=" * 80)
     print("\nAGENT ACTIVITY:")
     print("- Analyzer: Used extract_keywords tool")
