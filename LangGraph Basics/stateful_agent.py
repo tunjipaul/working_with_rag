@@ -3,7 +3,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 from typing import Literal
 import os
@@ -11,28 +11,26 @@ import time
 import requests
 
 load_dotenv()
-google_api_key = os.getenv("GOOGLE_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY")
 
-if not google_api_key:
+if not groq_api_key:
     raise ValueError(
         """
-    GOOGLE_API_KEY not found!
+    GROQ_API_KEY not found!
     
     Get your FREE API key from:
-    https://aistudio.google.com/app/apikey
+    https://console.groq.com
     
-    Then create a .env file with:
-    GOOGLE_API_KEY=your_key_here
+    Then add to your .env file:
+    GROQ_API_KEY=your_key_here
     """
     )
 
 print("API key loaded")
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite", temperature=0, google_api_key=google_api_key
-)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0, api_key=groq_api_key)
 
-print("LLM initialized: Gemini 2.5 Flash Lite")
+print("LLM initialized: Llama 3.3 70B via Groq")
 
 weather_cache = {}
 WEATHER_CACHE_DURATION = 3600
@@ -243,19 +241,35 @@ Then restart the agent."""
 print("Web search tool created")
 
 system_prompt = SystemMessage(
-    content="""You are a helpful assistant with access to three tools:
+    content="""You are a helpful, friendly assistant with access to real-time information.
 
-1. **get_weather**: Use when users ask about weather, temperature, or forecasts
-2. **define_word**: Use when users ask for word definitions or meanings
-3. **web_search**: Use when users need current information, news, or web searches
+IMPORTANT COMMUNICATION RULES:
+- NEVER mention tool names, function names, or technical terms like "get_weather", "define_word", "web_search", or any API references
+- NEVER say things like "I'll use the weather tool" or "Let me search for that"
+- Present information naturally as if you already know it or just looked it up casually
+- Be conversational and direct
 
-DECISION RULES:
-- Weather questions → get_weather tool
-- Word definitions → define_word tool
-- Current info/news/research → web_search tool
-- General knowledge/greetings → Answer directly (no tool needed)
+CAPABILITIES (keep these internal, don't mention them explicitly):
+- You can check current weather for any city
+- You can provide word definitions
+- You can search for current information online
 
-Be smart about tool selection. Only use tools when necessary."""
+HOW TO RESPOND:
+ GOOD: "The weather in Lagos is 28°C with clear skies"
+ BAD: "Let me check the weather using the get_weather function..."
+
+ GOOD: "I found some interesting articles about that topic..."
+ BAD: "I'll use the web_search tool to find information..."
+
+ GOOD: "That word means..."
+ BAD: "Using the define_word function, the definition is..."
+
+RESPONSE STYLE:
+- Be natural and conversational
+- Act like a knowledgeable friend helping out
+- Provide information directly without explaining your process
+- Keep responses concise and helpful
+- If you need to look something up, just do it seamlessly without announcing it"""
 )
 
 tools = [get_weather, define_word, web_search]
@@ -320,7 +334,7 @@ if __name__ == "__main__":
         time_since_last = time.time() - last_request_time
         if time_since_last < min_delay and last_request_time > 0:
             wait_time = min_delay - time_since_last
-            print(f"\n⏳ Rate limit: waiting {wait_time:.1f}s before next request...\n")
+            print(f"\nRate limit: waiting {wait_time:.1f}s before next request...\n")
             time.sleep(wait_time)
 
         last_request_time = time.time()
@@ -346,10 +360,10 @@ if __name__ == "__main__":
 
         except Exception as e:
             if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                print(f"\n Quota exceeded! You've used up your daily quota.")
-                print(
-                    f"Your quota will reset tomorrow. Check usage at: https://ai.dev/rate-limit\n"
-                )
+                print(f"\n Quota exceeded! You've used up your Groq free tier quota.")
+                print(f" Free tier limits: 500,000 tokens/day, 14,400 requests/day")
+                print(f" Check usage at: https://console.groq.com/")
+                print(f" Your quota will reset in 24 hours from first use today.\n")
                 break
             else:
                 print(f"\nError: {str(e)}\n")

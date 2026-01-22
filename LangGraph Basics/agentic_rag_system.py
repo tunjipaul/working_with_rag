@@ -10,7 +10,8 @@ from langgraph.prebuilt import ToolNode
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_core.documents import Document
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_groq import ChatGroq
+from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -42,22 +43,18 @@ class RateLimiter:
 rate_limiter = RateLimiter(calls_per_minute=4)
 
 load_dotenv()
-google_api_key = os.getenv("GOOGLE_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY")
 
-if not google_api_key:
-    raise ValueError("GOOGLE_API_KEY not found! Please set it in your .env file.")
+
+if not groq_api_key:
+    raise ValueError("GROQ_API_KEY not found! Please set it in your .env file.")
 
 print("API key loaded")
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash-exp", temperature=0.3, api_key=google_api_key
-)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.3, api_key=groq_api_key)
 
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/embedding-001", api_key=google_api_key
-)
 
-print("LLM and embeddings initialized")
+print("LLM (Groq) initialized")
 
 sample_documents = [
     Document(
