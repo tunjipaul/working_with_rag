@@ -1,1 +1,4 @@
 .env
+conversation_history.db
+conversation_history.db-shm
+conversation_history.db-wal
