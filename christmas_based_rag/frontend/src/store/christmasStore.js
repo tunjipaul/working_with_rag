@@ -1,13 +1,11 @@
 import { create } from 'zustand';
 
 const useChristmasStore = create((set, get) => ({
-  // State
   view: 'home',
   query: '',
   history: [],
   isLoading: false,
 
-  // Actions
   setView: (view) => set({ view }),
   setQuery: (query) => set({ query }),
   setIsLoading: (isLoading) => set({ isLoading }),

@@ -7,7 +7,6 @@ const HomeView = ({ onSearch }) => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen px-4 max-w-2xl mx-auto w-full relative">
-      {/* Decorative Icons */}
       <Snowflake className="absolute top-20 left-10 text-yellow-200 opacity-60" size={32} />
       <Sparkles className="absolute top-32 right-16 text-red-100 opacity-80" size={40} />
       <LucideTrees className="absolute top-10 right-10 text-green-700 opacity-20" size={64} />
@@ -21,7 +20,6 @@ const HomeView = ({ onSearch }) => {
         </h1>
       </div>
 
-      {/* Search Input */}
       <div className="w-full relative mb-12 shadow-sm">
         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
           <Search size={20} />
@@ -36,7 +34,6 @@ const HomeView = ({ onSearch }) => {
         />
       </div>
 
-      {/* Suggested Questions */}
       <div className="w-full">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Suggested Questions</h2>
         <div className="flex flex-wrap gap-3">

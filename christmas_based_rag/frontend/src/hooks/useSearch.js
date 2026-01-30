@@ -15,13 +15,11 @@ export const useSearch = () => {
   const handleSearch = async (searchQuery) => {
     if (!searchQuery?.trim()) return;
 
-    // Switch to chat view and add user message
     setView('chat');
     addUserMessage(searchQuery);
     clearQuery();
     setIsLoading(true);
 
-    // Format history for API (convert to role/content format)
     const formattedHistory = history.map(msg => ({
       role: msg.type === 'user' ? 'user' : 'assistant',
       content: msg.content

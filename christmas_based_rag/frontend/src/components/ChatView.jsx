@@ -6,7 +6,6 @@ const ChatView = ({ chatEndRef, onSearch }) => {
 
   return (
     <div className="flex flex-col h-screen bg-white">
-      {/* Header */}
       <div className="flex items-center px-4 py-4 border-b border-gray-100 bg-white sticky top-0 z-10">
         <button 
           onClick={() => setView('home')}
@@ -18,7 +17,6 @@ const ChatView = ({ chatEndRef, onSearch }) => {
         <h1 className="text-xl font-bold text-gray-800">YuletideAI Chat</h1>
       </div>
 
-      {/* Chat History */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {history.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -47,7 +45,6 @@ const ChatView = ({ chatEndRef, onSearch }) => {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Input Area */}
       <div className="p-4 border-t border-gray-100 bg-white">
         <div className="relative max-w-4xl mx-auto flex items-center gap-2">
           <div className="relative flex-1">

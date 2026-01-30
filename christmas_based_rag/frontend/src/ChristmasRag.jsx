@@ -9,7 +9,6 @@ const ChristmasRag = () => {
   const { view, history } = useChristmasStore();
   const { handleSearch } = useSearch();
 
-  // Scroll to bottom of chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history]);
