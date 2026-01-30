@@ -1,19 +1,19 @@
-# Christmas RAG System - Backend Requirements
-# Tested and working with Python 3.12+
-# Last updated: December 2024
-
 # Web Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
 
 # Data Validation
-pydantic==2.4.2
+pydantic>=2.6.0
 
 # Vector Database
-chromadb==0.4.13
+chromadb>=0.4.22
 
 # Embeddings
-sentence-transformers==2.2.2
+sentence-transformers>=2.3.0
 
 # Utilities
-python-multipart==0.0.6
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+
+# LLM
+groq>=0.4.0
